@@ -25,7 +25,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build image
-        run: docker build -t jesslyncaroline/uts-devsops-frontend:1.0.0 ./front-end
+        run: docker build -t jesslyncaroline/uts-devsops-frontend:1.0.0 ./frontend
 
       - name: Push image
         run: docker push jesslyncaroline/uts-devsops-frontend:1.0.0
@@ -36,7 +36,7 @@ jobs:
           node-version: 20
 
       - name: Build frontend
-        working-directory: ./front-end
+        working-directory: ./frontend
         run: |
           npm ci
           npm run build
@@ -44,7 +44,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./front-end/dist
+          path: ./frontend/dist
 
       - name: Deploy to GitHub Pages
         id: deployment
