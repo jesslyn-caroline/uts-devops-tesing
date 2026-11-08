@@ -19,7 +19,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build backend Docker image
-        run: docker build -t jesslyncaroline/uts-devops-backend:1.0.0 ./back-end
+        run: docker build -t jesslyncaroline/uts-devops-backend:1.0.0 ./backend
 
       - name: Push backend Docker image
         run: docker push jesslyncaroline/uts-devops-backend:1.0.0
