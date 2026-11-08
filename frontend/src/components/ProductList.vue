@@ -3,7 +3,7 @@
     <router-link
       to="/create"
       class="w-fit h-fit px-4 py-2 rounded-md bg-emerald-300 text-white text-md font-semibold"
-      >Add New</router-link
+      >Add New Edit</router-link
     >
     <div class="relative overflow-x-auto shadow-md sm:rounded-lg">
       <table
