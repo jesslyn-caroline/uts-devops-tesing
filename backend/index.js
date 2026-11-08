@@ -5,9 +5,9 @@ import bodyParser from 'body-parser';
 import 'dotenv/config';    
 
 const con = mysql2.createConnection({
-    host: 'localhost', 
+    host: 'host.docker.internal',
+    port: 8002,
     user: 'root',
-    database_port: process.env.DATABASE_PORT,
     password: process.env.DATABASE_PASSWORD,
     database: process.env.DATABASE_NAME,
 })
