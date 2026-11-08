@@ -2,7 +2,7 @@ services:
   frontend:
     build: ./frontend
     ports:
-      - '5000:5000'
+      - '5000:80'
     depends_on:
       - backend
 
@@ -11,18 +11,34 @@ services:
     ports:
       - '5001:5001'
     environment:
-      - PORT=5001
+      PORT: 5001
+      DATABASE_HOST: database
+      DATABASE_PORT: 3306
+      DATABASE_USER: ${MYSQL_USER}
+      DATABASE_PASSWORD: ${MYSQL_PASSWORD}
+      DATABASE_NAME: ${MYSQL_DATABASE}
     depends_on:
-      - database
+      database:
+        condition: service_healthy
 
-  # 3. Database Service (MySQL / MongoDB / PostgreSQL)
   database:
     image: mysql:8.0
     environment:
-      MYSQL_ROOT_PASSWORD: K!tsun3kitsune
-      MYSQL_DATABASE: crud_db
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     ports:
       - '5002:3306'
     volumes:
       - db_data:/var/lib/mysql
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: [ "CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  db_data:

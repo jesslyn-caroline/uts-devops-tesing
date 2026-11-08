@@ -1,75 +1,137 @@
-import mysql2 from 'mysql2';
 import express from 'express';
 import cors from 'cors';
-import bodyParser from 'body-parser';
-import 'dotenv/config';    
+import mysql from 'mysql2/promise';
 
-const con = mysql2.createConnection({
-    host: 'host.docker.internal',
-    port: 8002,
-    user: 'root',
-    password: process.env.DATABASE_PASSWORD,
-    database: process.env.DATABASE_NAME,
-})
+// 1. Konfigurasi dibaca dari variabel environment.
+//    Nilai setelah || hanya dipakai saat dijalankan di laptop tanpa container.
+const PORT = Number(process.env.PORT) || 3000;
 
-con.connect((err) => {
-    if (err) console.error(`Can't connect: ${err}`); 
-    else console.log('Database connected.');
+const pool = mysql.createPool({
+    host: process.env.DATABASE_HOST || 'localhost',
+    port: Number(process.env.DATABASE_PORT) || 3306,
+    user: process.env.DATABASE_USER || 'root',
+    password: process.env.DATABASE_PASSWORD || '',
+    database: process.env.DATABASE_NAME || 'crud_db',
+    waitForConnections: true,
+    connectionLimit: 10,
 });
 
 const app = express();
-const port = 3000;
-
-app.use(bodyParser.json());
 app.use(cors());
+app.use(express.json());
 
-app.listen(port, () => console.log(`http://localhost:${port}`));
+// 2. Fungsi bantu agar setiap error selalu dibalas, tidak menggantung.
+function handleError(res, err) {
+    console.error('Database error:', err.message);
+    res.status(500).json({ message: 'Terjadi kesalahan pada server' });
+}
 
-app.get('/api/products', (req, res) => {
-    let sql = 'SELECT * FROM product';
-    let query = con.query(sql, (err, result) => {
-        if (err) console.log('Something wrong');
-        else return res.send(result);
-    })
-})
+// 3. Fungsi bantu untuk memeriksa input produk.
+function isValidProduct(name, price) {
+    const nameOk = typeof name === 'string' && name.trim() !== '';
+    const priceOk = price !== '' && price !== null && price !== undefined
+        && !Number.isNaN(Number(price)) && Number(price) >= 0;
+    return nameOk && priceOk;
+}
 
+// 4. Health check: sehat hanya jika database bisa dihubungi.
+app.get('/api/health', async (req, res) => {
+    try {
+        await pool.query('SELECT 1');
+        res.json({ ok: true, db: 'up', uptime: Math.round(process.uptime()) });
+    } catch (err) {
+        console.error('Health check gagal:', err.message);
+        res.status(503).json({ ok: false, db: 'down' });
+    }
+});
 
-app.get('/api/products/:id', (req, res) => {
-    let id = req.params.id;
-    let sql = `SELECT * FROM product WHERE product_id = ${id}`;
-    let query = con.query(sql, (err, result) => {
-        if (err) console.log('Something wrong');
-        else {
-            console.log('Success');
-            return res.send(result);
+// 5. Ambil semua produk.
+app.get('/api/products', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM product');
+        res.json(rows);
+    } catch (err) {
+        handleError(res, err);
+    }
+});
+
+// 6. Ambil satu produk (tetap dikirim sebagai array, karena front end membaca data[0]).
+app.get('/api/products/:id', async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            'SELECT * FROM product WHERE product_id = ?',
+            [req.params.id]
+        );
+        res.json(rows);
+    } catch (err) {
+        handleError(res, err);
+    }
+});
+
+// 7. Tambah produk.
+app.post('/api/products', async (req, res) => {
+    const { product_name, product_price } = req.body;
+    if (!isValidProduct(product_name, product_price)) {
+        return res.status(400).json({ message: 'product_name dan product_price wajib diisi dengan benar' });
+    }
+    try {
+        const [result] = await pool.query(
+            'INSERT INTO product (product_name, product_price) VALUES (?, ?)',
+            [product_name.trim(), Number(product_price)]
+        );
+        res.status(201).json({ message: 'Produk berhasil ditambahkan', product_id: result.insertId });
+    } catch (err) {
+        handleError(res, err);
+    }
+});
+
+// 8. Ubah produk.
+app.put('/api/products/:id', async (req, res) => {
+    const { product_name, product_price } = req.body;
+    if (!isValidProduct(product_name, product_price)) {
+        return res.status(400).json({ message: 'product_name dan product_price wajib diisi dengan benar' });
+    }
+    try {
+        const [result] = await pool.query(
+            'UPDATE product SET product_name = ?, product_price = ? WHERE product_id = ?',
+            [product_name.trim(), Number(product_price), req.params.id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Produk tidak ditemukan' });
         }
-    })
-})
+        res.json({ message: 'Produk berhasil diubah' });
+    } catch (err) {
+        handleError(res, err);
+    }
+});
 
-app.post('/api/products', (req, res) => {
-    const product_name = req.body.product_name;
-    const product_price = req.body.product_price;
-    let sql = `INSERT INTO product (product_name, product_price) VALUES ("${product_name}", ${product_price})`;
-    let query = con.query(sql, (err, result) => {
-        if (err) console.log('Something wrong');
-        else {
-            console.log('Succesfully updated');
-            return res.send(result);
+// 9. Hapus produk (endpoint baru, dipanggil tombol Delete di front end).
+app.delete('/api/products/:id', async (req, res) => {
+    try {
+        const [result] = await pool.query(
+            'DELETE FROM product WHERE product_id = ?',
+            [req.params.id]
+        );
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Produk tidak ditemukan' });
         }
-    })
-})
+        res.json({ message: 'Produk berhasil dihapus' });
+    } catch (err) {
+        handleError(res, err);
+    }
+});
 
-app.put('/api/products/:id', (req, res) => {
-    const product_name = req.body.product_name;
-    const product_price = req.body.product_price;
-    const id = req.params.id;
-    console.log(product_name);
-    let sql = `UPDATE product SET product_name = "${product_name}", product_price = ${product_price} WHERE product_id = ${id}`;
-    let query = con.query(sql, (err, result) => {
-        if (err) console.log('Something wrong');
-        else {
-            console.log('Succesfully updated');
-            return res.send(result);
-        }
-    })
-})
+// 10. Jalankan server.
+const server = app.listen(PORT, () => {
+    console.log(`Back end berjalan di port ${PORT}`);
+});
+
+// 11. Berhenti dengan rapi saat container dihentikan (docker stop / compose down).
+function shutdown(signal) {
+    console.log(`${signal} diterima, menutup server...`);
+    server.close(() => {
+        pool.end().finally(() => process.exit(0));
+    });
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
